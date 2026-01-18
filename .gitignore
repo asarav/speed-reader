@@ -29,14 +29,6 @@ build/
 dist/
 *.pyc
 
-# Old files (to be removed)
-file_parser.py
-speed_reader.py
-tts_manager.py
-build_executable.py
-build.bat
-build.sh
-
 # IDE
 .vscode/
 .idea/
@@ -47,3 +39,11 @@ build.sh
 # OS
 .DS_Store
 Thumbs.db
+
+# Coverage
+.coverage
+coverage.xml
+htmlcov/
+
+# GitHub Actions
+.github/workflows/*.log

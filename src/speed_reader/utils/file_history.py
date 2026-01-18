@@ -142,6 +142,33 @@ class FileHistory:
         except Exception as e:
             print(f"Error saving file history: {e}")
     
+    def save_speed(self, speed: int):
+        """
+        Save preferred reading speed.
+        
+        Args:
+            speed: Words per minute
+        """
+        try:
+            data = self._load_data()
+            data['preferred_speed'] = speed
+            self._save_data(data)
+        except Exception as e:
+            print(f"Error saving speed: {e}")
+    
+    def get_speed(self) -> int:
+        """
+        Get saved preferred reading speed.
+        
+        Returns:
+            Preferred speed in WPM, defaults to 300
+        """
+        try:
+            data = self._load_data()
+            return data.get('preferred_speed', 300)
+        except Exception:
+            return 300
+    
     def _save_data(self, data: dict):
         """Save data to file."""
         try:

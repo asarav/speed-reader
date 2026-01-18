@@ -8,10 +8,10 @@ from typing import Optional
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QPushButton, QLabel, QFileDialog, QSlider, QSpinBox, QTextEdit,
-    QGroupBox, QProgressBar, QMessageBox, QCheckBox, QComboBox
+    QGroupBox, QProgressBar, QMessageBox, QCheckBox, QComboBox, QSizePolicy
 )
 from PyQt6.QtCore import QTimer, Qt
-from PyQt6.QtGui import QKeySequence, QShortcut
+from PyQt6.QtGui import QKeySequence, QShortcut, QFont, QResizeEvent
 from ..parsers.file_parser import FileParser
 from ..models.document import DocumentMetadata
 from ..tts.manager import TTSManager
@@ -28,32 +28,65 @@ class SpeedReaderWindow(QMainWindow):
         self.current_index: int = 0
         self.is_playing: bool = False
         self.timer: Optional[QTimer] = None
-        self.wpm: int = 300  # Words per minute
         self.file_path: Optional[str] = None
         self.tts = TTSManager()
         self.file_history = FileHistory()
+        
+        # Load saved speed preference
+        self.wpm: int = self.file_history.get_speed()
+        
+        # Fullscreen state
+        self.is_fullscreen: bool = False
+        self.fullscreen_widget: Optional[QWidget] = None
         
         self.init_ui()
         self.setup_timer()
         self.update_recent_files()  # Initialize recent files dropdown
         self.load_last_file()  # Ask to load last file
     
+    def resizeEvent(self, event: QResizeEvent):
+        """Handle window resize to scale fonts."""
+        super().resizeEvent(event)
+        self.update_font_sizes()
+    
+    def update_font_sizes(self):
+        """Update font sizes based on window size."""
+        height = self.height()
+        # Scale font size based on window height (min 24, max 72)
+        font_size = max(24, min(72, height // 10))
+        font = self.word_label.font()
+        font.setPointSize(font_size)
+        self.word_label.setFont(font)
+        
+        # Also scale fullscreen font if in fullscreen
+        if self.is_fullscreen and hasattr(self, 'fullscreen_word_label'):
+            fs_font = self.fullscreen_word_label.font()
+            fs_font.setPointSize(max(48, min(144, self.height() // 5)))
+            self.fullscreen_word_label.setFont(fs_font)
+    
     def init_ui(self):
         """Initialize the user interface."""
         self.setWindowTitle("Speed Reader")
-        self.setGeometry(100, 100, 1100, 800)
+        self.setGeometry(100, 100, 1000, 700)  # Slightly smaller default size
+        self.setMinimumSize(700, 500)  # More reasonable minimum size for smaller screens
         
         # Apply modern stylesheet
         self.setStyleSheet(get_stylesheet('dark'))
+        
+        self.create_menu_bar()
         
         # Central widget
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
         layout = QVBoxLayout(central_widget)
+        layout.setSpacing(6)  # Reduced spacing between groups
+        layout.setContentsMargins(8, 8, 8, 8)  # Add some margins
         
         # File selection group
         file_group = QGroupBox("File Selection")
         file_layout = QVBoxLayout()
+        file_layout.setContentsMargins(6, 6, 6, 6)  # Reduce margins
+        file_layout.setSpacing(4)  # Reduce spacing
         
         file_button_layout = QHBoxLayout()
         self.file_label = QLabel("No file loaded")
@@ -84,15 +117,17 @@ class SpeedReaderWindow(QMainWindow):
         # Enhanced Starting position group
         position_group = QGroupBox("Starting Position & Context")
         position_layout = QVBoxLayout()
+        position_layout.setContentsMargins(6, 6, 6, 6)  # Reduce margins
+        position_layout.setSpacing(4)  # Reduce spacing
         
         # Position info display (page, chapter, percentage)
         info_layout = QHBoxLayout()
         self.page_label = QLabel("Page: -")
-        self.page_label.setStyleSheet("font-weight: bold; font-size: 12px; color: #333;")
+        self.page_label.setStyleSheet("font-weight: bold; font-size: 12px; color: #b0b0b0;")
         self.chapter_label = QLabel("Chapter: -")
-        self.chapter_label.setStyleSheet("font-weight: bold; font-size: 12px; color: #333;")
+        self.chapter_label.setStyleSheet("font-weight: bold; font-size: 12px; color: #b0b0b0;")
         self.percentage_label = QLabel("Progress: 0%")
-        self.percentage_label.setStyleSheet("font-weight: bold; font-size: 12px; color: #333;")
+        self.percentage_label.setStyleSheet("font-weight: bold; font-size: 12px; color: #b0b0b0;")
         
         info_layout.addWidget(self.page_label)
         info_layout.addWidget(self.chapter_label)
@@ -132,17 +167,18 @@ class SpeedReaderWindow(QMainWindow):
         
         self.context_preview = QTextEdit()
         self.context_preview.setReadOnly(True)
-        self.context_preview.setMinimumHeight(180)
-        self.context_preview.setMaximumHeight(220)
+        self.context_preview.setMinimumHeight(80)  # More flexible minimum height
+        self.context_preview.setMaximumHeight(150)  # More flexible maximum height
+        self.context_preview.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self.context_preview.setStyleSheet("""
             QTextEdit {
                 background-color: #2d2d2d;
                 color: #ffffff;
                 border: 1px solid #404040;
                 border-radius: 6px;
-                padding: 10px;
-                font-size: 12px;
-                line-height: 1.6;
+                padding: 6px;
+                font-size: 10px;
+                line-height: 1.4;
             }
         """)
         position_layout.addWidget(self.context_preview)
@@ -152,43 +188,58 @@ class SpeedReaderWindow(QMainWindow):
         # Word display area
         display_group = QGroupBox("Reading Display")
         display_layout = QVBoxLayout()
+        display_layout.setContentsMargins(4, 4, 4, 4)  # Reduce margins
         
         self.word_label = QLabel("Load a file to begin reading")
         self.word_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.word_label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self.word_label.setStyleSheet("""
             QLabel {
-                font-size: 56px;
+                font-size: 36px;
                 font-weight: 600;
-                padding: 60px 40px;
+                padding: 15px 10px;
                 background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
                     stop:0 #2d2d2d, stop:1 #1e1e1e);
                 color: #ffffff;
                 border: 2px solid #4a9eff;
-                border-radius: 12px;
-                letter-spacing: 2px;
+                border-radius: 8px;
+                letter-spacing: 1px;
+                min-height: 60px;
             }
         """)
-        display_layout.addWidget(self.word_label)
+        display_layout.addWidget(self.word_label, stretch=1)  # Allow stretching
         display_group.setLayout(display_layout)
         
         # Controls group
         controls_group = QGroupBox("Controls")
         controls_layout = QVBoxLayout()
+        controls_layout.setContentsMargins(6, 6, 6, 6)  # Reduce margins
+        controls_layout.setSpacing(6)  # Reduce spacing
         
         # WPM and TTS controls
         top_controls = QHBoxLayout()
         
         wpm_layout = QHBoxLayout()
-        wpm_layout.addWidget(QLabel("Words Per Minute (WPM):"))
+        wpm_layout.addWidget(QLabel("WPM:"))
         self.wpm_spinbox = QSpinBox()
         self.wpm_spinbox.setMinimum(50)
         self.wpm_spinbox.setMaximum(1000)
         self.wpm_spinbox.setValue(self.wpm)
+        self.wpm_spinbox.setFixedWidth(80)  # Fixed width to prevent cutoff
         self.wpm_spinbox.valueChanged.connect(self.on_wpm_changed)
         wpm_layout.addWidget(self.wpm_spinbox)
         
+        # Add speed preset dropdown
+        wpm_layout.addWidget(QLabel("Presets:"))
+        self.speed_combo = QComboBox()
+        self.speed_combo.addItems(["200", "250", "300", "350", "400", "500"])
+        self.speed_combo.setCurrentText(str(self.wpm))  # Set to loaded speed
+        self.speed_combo.setFixedWidth(60)
+        self.speed_combo.currentTextChanged.connect(self.on_speed_preset_changed)
+        wpm_layout.addWidget(self.speed_combo)
+        
         # TTS checkbox
-        self.tts_checkbox = QCheckBox("Text-to-Speech")
+        self.tts_checkbox = QCheckBox("TTS")
         self.tts_checkbox.setEnabled(self.tts.is_available())
         if not self.tts.is_available():
             self.tts_checkbox.setToolTip("TTS not available on this system")
@@ -217,10 +268,15 @@ class SpeedReaderWindow(QMainWindow):
         self.next_word_btn.clicked.connect(self.next_word)
         self.next_word_btn.setEnabled(False)
         
+        self.fullscreen_btn = QPushButton("⛶ Fullscreen")
+        self.fullscreen_btn.clicked.connect(self.toggle_fullscreen)
+        self.fullscreen_btn.setEnabled(False)
+        
         button_layout.addWidget(self.prev_word_btn)
         button_layout.addWidget(self.play_pause_btn)
         button_layout.addWidget(self.next_word_btn)
         button_layout.addWidget(self.reset_btn)
+        button_layout.addWidget(self.fullscreen_btn)
         controls_layout.addLayout(button_layout)
         
         controls_group.setLayout(controls_layout)
@@ -238,12 +294,36 @@ class SpeedReaderWindow(QMainWindow):
         # Assemble main layout
         layout.addWidget(file_group)
         layout.addWidget(position_group)
-        layout.addWidget(display_group, stretch=1)
+        layout.addWidget(display_group, stretch=2)  # Give more stretch to display
         layout.addWidget(controls_group)
         layout.addLayout(progress_layout)
         
         # Keyboard shortcuts
         self.setup_shortcuts()
+    
+    def create_menu_bar(self):
+        """Create the menu bar."""
+        menubar = self.menuBar()
+        
+        # File menu
+        file_menu = menubar.addMenu('File')
+        file_menu.addAction('Load File', self.load_file)
+        file_menu.addAction('Paste Text', self.paste_text)
+        file_menu.addSeparator()
+        file_menu.addAction('Exit', self.close)
+        
+        # View menu
+        view_menu = menubar.addMenu('View')
+        view_menu.addAction('Fullscreen', self.toggle_fullscreen)
+        
+        # Help menu
+        help_menu = menubar.addMenu('Help')
+        help_menu.addAction('About', self.show_about)
+    
+    def show_about(self):
+        """Show about dialog."""
+        QMessageBox.about(self, "About Speed Reader", 
+                         "Speed Reader v1.0\n\nA fast text reading application with TTS support.")
     
     def setup_shortcuts(self):
         """Setup keyboard shortcuts."""
@@ -251,6 +331,8 @@ class SpeedReaderWindow(QMainWindow):
         QShortcut(QKeySequence("Left"), self, self.previous_word)
         QShortcut(QKeySequence("Right"), self, self.next_word)
         QShortcut(QKeySequence("R"), self, self.reset_position)
+        QShortcut(QKeySequence("F11"), self, self.toggle_fullscreen)
+        QShortcut(QKeySequence("Escape"), self, self.exit_fullscreen)
     
     def setup_timer(self):
         """Setup the timer for word display."""
@@ -357,6 +439,7 @@ class SpeedReaderWindow(QMainWindow):
         self.reset_btn.setEnabled(True)
         self.prev_word_btn.setEnabled(True)
         self.next_word_btn.setEnabled(True)
+        self.fullscreen_btn.setEnabled(True)
         
         # Populate chapter combo box
         self.populate_chapters()
@@ -419,6 +502,23 @@ class SpeedReaderWindow(QMainWindow):
         self.tts.set_wpm(value)
         if self.is_playing:
             self.start_reading()
+        # Save speed preference
+        self.file_history.save_speed(value)
+        # Update speed combo to match current value
+        if hasattr(self, 'speed_combo'):
+            current_text = str(value)
+            if self.speed_combo.findText(current_text) == -1:
+                # Add the custom speed to the combo temporarily
+                self.speed_combo.addItem(current_text)
+            self.speed_combo.setCurrentText(current_text)
+    
+    def on_speed_preset_changed(self, text: str):
+        """Handle speed preset selection."""
+        try:
+            speed = int(text)
+            self.wpm_spinbox.setValue(speed)
+        except ValueError:
+            pass
     
     def on_tts_toggled(self, state: int):
         """Handle TTS checkbox toggle."""
@@ -508,6 +608,162 @@ class SpeedReaderWindow(QMainWindow):
         self.update_position_info()
         self.update_position_controls()
     
+    def toggle_fullscreen(self):
+        """Toggle fullscreen mode."""
+        if self.is_fullscreen:
+            self.exit_fullscreen()
+        else:
+            self.enter_fullscreen()
+    
+    def enter_fullscreen(self):
+        """Enter fullscreen mode."""
+        if not self.metadata or not self.metadata.words:
+            return
+        
+        self.is_fullscreen = True
+        
+        # Create fullscreen widget
+        self.fullscreen_widget = QWidget()
+        self.fullscreen_widget.setStyleSheet("background-color: #000000;")
+        fullscreen_layout = QVBoxLayout(self.fullscreen_widget)
+        fullscreen_layout.setContentsMargins(0, 0, 0, 0)
+        
+        # Create a horizontal layout for the three words
+        words_layout = QHBoxLayout()
+        words_layout.setSpacing(30)  # Reduced spacing between words
+        words_layout.setContentsMargins(30, 0, 30, 0)  # Reduced margins
+        
+        # Previous word label
+        self.prev_word_label = QLabel()
+        prev_font = QFont()
+        prev_font.setPointSize(48)  # Smaller than current word
+        prev_font.setWeight(QFont.Weight.Normal)
+        self.prev_word_label.setFont(prev_font)
+        self.prev_word_label.setStyleSheet("color: #666666; background-color: #000000;")
+        self.prev_word_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        self.prev_word_label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+        
+        # Current word label (main focus)
+        self.fullscreen_word_label = QLabel()
+        self.fullscreen_word_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        # Make the font responsive for fullscreen
+        font = QFont()
+        font.setPointSize(96)  # Large but not as huge for better responsiveness
+        font.setWeight(QFont.Weight.Bold)
+        self.fullscreen_word_label.setFont(font)
+        self.fullscreen_word_label.setStyleSheet("""
+            QLabel {
+                color: #ffffff;
+                background-color: #000000;
+                padding: 10px 0px;
+                min-height: 80px;
+            }
+        """)
+        self.fullscreen_word_label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        
+        # Next word label
+        self.next_word_label = QLabel()
+        next_font = QFont()
+        next_font.setPointSize(48)  # Smaller than current word
+        next_font.setWeight(QFont.Weight.Normal)
+        self.next_word_label.setFont(next_font)
+        self.next_word_label.setStyleSheet("color: #666666; background-color: #000000;")
+        self.next_word_label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+        self.next_word_label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+        
+        # Add words to horizontal layout
+        words_layout.addWidget(self.prev_word_label, stretch=1)
+        words_layout.addWidget(self.fullscreen_word_label, stretch=2)
+        words_layout.addWidget(self.next_word_label, stretch=1)
+        
+        # Exit button (small, top-right corner)
+        exit_btn = QPushButton("✕")
+        exit_btn.setFixedSize(50, 50)
+        exit_btn.setStyleSheet("""
+            QPushButton {
+                background-color: rgba(255, 255, 255, 0.2);
+                color: #ffffff;
+                border: none;
+                border-radius: 25px;
+                font-size: 20px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: rgba(255, 255, 255, 0.4);
+            }
+        """)
+        exit_btn.clicked.connect(self.exit_fullscreen)
+        
+        # Layout for fullscreen
+        fullscreen_layout.addWidget(exit_btn, alignment=Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignRight)
+        fullscreen_layout.addStretch()
+        fullscreen_layout.addLayout(words_layout)
+        fullscreen_layout.addStretch()
+        
+        # Set up Escape shortcut on the fullscreen widget
+        QShortcut(QKeySequence("Escape"), self.fullscreen_widget, self.exit_fullscreen)
+        
+        # Show fullscreen
+        self.fullscreen_widget.showFullScreen()
+        
+        # Update the word display
+        self.update_fullscreen_display()
+        
+        # Hide main window
+        self.hide()
+    
+    def exit_fullscreen(self):
+        """Exit fullscreen mode."""
+        if not self.is_fullscreen:
+            return
+        
+        self.is_fullscreen = False
+        
+        # Hide fullscreen widget
+        if self.fullscreen_widget:
+            self.fullscreen_widget.hide()
+            self.fullscreen_widget = None
+        
+        # Show main window
+        self.show()
+        self.activateWindow()
+    
+    def update_fullscreen_display(self):
+        """Update the fullscreen word display."""
+        if not self.is_fullscreen or not self.fullscreen_widget:
+            return
+        
+        if not self.metadata or not self.metadata.words:
+            self.prev_word_label.setText("")
+            self.fullscreen_word_label.setText("No words available")
+            self.next_word_label.setText("")
+            return
+        
+        # Previous word
+        if self.current_index > 0:
+            prev_word = self.metadata.words[self.current_index - 1]
+            self.prev_word_label.setText(prev_word)
+        else:
+            self.prev_word_label.setText("")
+        
+        # Current word
+        if 0 <= self.current_index < len(self.metadata.words):
+            word = self.metadata.words[self.current_index]
+            self.fullscreen_word_label.setText(word)
+            
+            # Speak the word if TTS is enabled
+            if self.tts.enabled:
+                self.tts.speak(word)
+        else:
+            self.fullscreen_word_label.setText("No words available")
+        
+        # Next word
+        if self.current_index < len(self.metadata.words) - 1:
+            next_word = self.metadata.words[self.current_index + 1]
+            self.next_word_label.setText(next_word)
+        else:
+            self.next_word_label.setText("")
+    
     def update_position_controls(self):
         """Update position slider."""
         self.position_slider.blockSignals(True)
@@ -569,6 +825,8 @@ class SpeedReaderWindow(QMainWindow):
         """Update the word display."""
         if not self.metadata or not self.metadata.words:
             self.word_label.setText("No words available")
+            if self.is_fullscreen:
+                self.update_fullscreen_display()
             return
         
         if 0 <= self.current_index < len(self.metadata.words):
@@ -578,8 +836,14 @@ class SpeedReaderWindow(QMainWindow):
             # Speak the word if TTS is enabled
             if self.tts.enabled:
                 self.tts.speak(word)
+                
+            # Update fullscreen display if active
+            if self.is_fullscreen:
+                self.update_fullscreen_display()
         else:
             self.word_label.setText("No words available")
+            if self.is_fullscreen:
+                self.update_fullscreen_display()
     
     def update_progress(self):
         """Update progress bar and label."""

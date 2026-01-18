@@ -59,11 +59,11 @@ def get_stylesheet(theme='dark'):
     
     QGroupBox {{
         font-weight: bold;
-        font-size: 13px;
-        border: 2px solid {colors['border']};
-        border-radius: 8px;
-        margin-top: 12px;
-        padding-top: 12px;
+        font-size: 12px;
+        border: 1px solid {colors['border']};
+        border-radius: 6px;
+        margin-top: 8px;
+        padding-top: 8px;
         background-color: {colors['surface']};
         color: {colors['text_primary']};
     }}
@@ -79,11 +79,11 @@ def get_stylesheet(theme='dark'):
         background-color: {colors['accent']};
         color: {colors['text_primary']};
         border: none;
-        border-radius: 6px;
-        padding: 8px 16px;
-        font-size: 12px;
+        border-radius: 4px;
+        padding: 6px 12px;
+        font-size: 11px;
         font-weight: 500;
-        min-height: 32px;
+        min-height: 24px;
     }}
     
     QPushButton:hover {{
@@ -213,12 +213,12 @@ def get_stylesheet(theme='dark'):
     
     QProgressBar {{
         border: 1px solid {colors['border']};
-        border-radius: 4px;
+        border-radius: 3px;
         text-align: center;
         background-color: {colors['surface_light']};
         color: {colors['text_primary']};
-        font-size: 11px;
-        height: 20px;
+        font-size: 10px;
+        height: 16px;
     }}
     
     QProgressBar::chunk {{
