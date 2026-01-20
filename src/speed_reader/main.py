@@ -3,7 +3,14 @@ Main entry point for Speed Reader application.
 """
 import sys
 from PyQt6.QtWidgets import QApplication
-from .gui.window import SpeedReaderWindow
+
+# Handle imports for both local development and bundled executable
+try:
+    # Try absolute import (works in bundled executable)
+    from speed_reader.gui.window import SpeedReaderWindow
+except ImportError:
+    # Fall back to relative import (works in local development)
+    from .gui.window import SpeedReaderWindow
 
 
 def main():

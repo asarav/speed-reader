@@ -67,6 +67,23 @@ python -m src.speed_reader.main
 
 To create a standalone executable that can run without Python installed:
 
+**Option 1 - Complete Build (Recommended):**
+Run all tests, build executable, and create Python packages in one command:
+
+**Windows:**
+```bash
+scripts\build_all.bat
+```
+
+**Linux/macOS:**
+```bash
+chmod +x scripts/build_all.sh
+./scripts/build_all.sh
+```
+
+**Option 2 - Individual Components:**
+Build only the executable:
+
 **Windows:**
 ```bash
 scripts\build.bat
@@ -153,8 +170,10 @@ speed-reader/
 │           ├── __init__.py
 │           └── file_history.py  # File and speed history management
 ├── scripts/
-│   ├── build.bat                # Windows build script
-│   └── build.sh                 # Linux/macOS build script
+│   ├── build_all.bat            # Windows complete build script (tests + executable + packages)
+│   ├── build_all.sh             # Linux/macOS complete build script (tests + executable + packages)
+│   ├── build.bat                # Windows executable build script
+│   └── build.sh                 # Linux/macOS executable build script
 ├── tests/                       # Test files
 │   └── test_basic.py          # Basic functionality tests
 ├── run.py                       # Convenience run script
@@ -224,17 +243,38 @@ All tests must pass before changes can be merged.
 
 ### Building for Distribution
 
-The project uses PyInstaller to create standalone executables:
+The project uses PyInstaller to create standalone executables and setuptools for Python packages:
+
+**Complete Build (Recommended):**
+Run tests, build executable, and create Python packages:
 
 **Windows:**
 ```bash
-scripts\build.bat
+scripts\build_all.bat
+```
+
+**Linux/macOS:**
+```bash
+chmod +x scripts/build_all.sh
+./scripts/build_all.sh
+```
+
+**Individual Components:**
+Build only specific components:
+
+**Windows:**
+```bash
+scripts\build.bat          # Build executable only
+python setup.py sdist bdist_wheel  # Build Python packages only
+python -m unittest tests.test_basic -v  # Run tests only
 ```
 
 **Linux/macOS:**
 ```bash
 chmod +x scripts/build.sh
-./scripts/build.sh
+./scripts/build.sh         # Build executable only
+python3 setup.py sdist bdist_wheel  # Build Python packages only
+python3 -m unittest tests.test_basic -v  # Run tests only
 ```
 
 ### Code Style

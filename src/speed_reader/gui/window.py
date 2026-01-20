@@ -43,6 +43,7 @@ class SpeedReaderWindow(QMainWindow):
         self.setup_timer()
         self.update_recent_files()  # Initialize recent files dropdown
         self.load_last_file()  # Ask to load last file
+        self.update_font_sizes()  # Set initial font size
     
     def resizeEvent(self, event: QResizeEvent):
         """Handle window resize to scale fonts."""
@@ -52,17 +53,45 @@ class SpeedReaderWindow(QMainWindow):
     def update_font_sizes(self):
         """Update font sizes based on window size."""
         height = self.height()
-        # Scale font size based on window height (min 24, max 72)
-        font_size = max(24, min(72, height // 10))
-        font = self.word_label.font()
-        font.setPointSize(font_size)
-        self.word_label.setFont(font)
+        
+        # Scale font size based on window height with better proportions
+        # Base size of 36px, scale up for larger windows
+        base_size = 36
+        scale_factor = min(4.0, height / 400.0)  # Scale up to 4x for tall windows (144px max)
+        font_size = int(base_size * scale_factor)
+        
+        # Ensure reasonable bounds - increased maximum
+        font_size = max(24, min(144, font_size))
+        
+        # Update the stylesheet with the new font size
+        self.word_label.setStyleSheet(f"""
+            QLabel {{
+                font-size: {font_size}px;
+                font-weight: 600;
+                padding: 15px 10px;
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 #2d2d2d, stop:1 #1e1e1e);
+                color: #ffffff;
+                border: 2px solid #4a9eff;
+                border-radius: 8px;
+                letter-spacing: 1px;
+                min-height: 60px;
+            }}
+        """)
         
         # Also scale fullscreen font if in fullscreen
         if self.is_fullscreen and hasattr(self, 'fullscreen_word_label'):
-            fs_font = self.fullscreen_word_label.font()
-            fs_font.setPointSize(max(48, min(144, self.height() // 5)))
-            self.fullscreen_word_label.setFont(fs_font)
+            fs_font_size = max(48, min(200, self.height() // 4))  # More aggressive scaling for fullscreen
+            fs_stylesheet = f"""
+                QLabel {{
+                    color: #ffffff;
+                    background-color: #000000;
+                    padding: 10px 0px;
+                    font-size: {fs_font_size}px;
+                    font-weight: bold;
+                }}
+            """
+            self.fullscreen_word_label.setStyleSheet(fs_stylesheet)
     
     def init_ui(self):
         """Initialize the user interface."""
@@ -195,7 +224,6 @@ class SpeedReaderWindow(QMainWindow):
         self.word_label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self.word_label.setStyleSheet("""
             QLabel {
-                font-size: 36px;
                 font-weight: 600;
                 padding: 15px 10px;
                 background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
@@ -232,7 +260,7 @@ class SpeedReaderWindow(QMainWindow):
         # Add speed preset dropdown
         wpm_layout.addWidget(QLabel("Presets:"))
         self.speed_combo = QComboBox()
-        self.speed_combo.addItems(["200", "250", "300", "350", "400", "500"])
+        self.speed_combo.addItems(["200", "250", "300", "350", "400", "500", "600", "700", "800", "900", "1000"])
         self.speed_combo.setCurrentText(str(self.wpm))  # Set to loaded speed
         self.speed_combo.setFixedWidth(60)
         self.speed_combo.currentTextChanged.connect(self.on_speed_preset_changed)
@@ -331,7 +359,7 @@ class SpeedReaderWindow(QMainWindow):
         QShortcut(QKeySequence("Left"), self, self.previous_word)
         QShortcut(QKeySequence("Right"), self, self.next_word)
         QShortcut(QKeySequence("R"), self, self.reset_position)
-        QShortcut(QKeySequence("F11"), self, self.toggle_fullscreen)
+        QShortcut(QKeySequence("Ctrl+F11"), self, self.toggle_fullscreen)
         QShortcut(QKeySequence("Escape"), self, self.exit_fullscreen)
     
     def setup_timer(self):
@@ -700,8 +728,12 @@ class SpeedReaderWindow(QMainWindow):
         fullscreen_layout.addLayout(words_layout)
         fullscreen_layout.addStretch()
         
-        # Set up Escape shortcut on the fullscreen widget
+        # Set up shortcuts on the fullscreen widget
         QShortcut(QKeySequence("Escape"), self.fullscreen_widget, self.exit_fullscreen)
+        QShortcut(QKeySequence("Space"), self.fullscreen_widget, self.toggle_play_pause)
+        QShortcut(QKeySequence("Left"), self.fullscreen_widget, self.previous_word)
+        QShortcut(QKeySequence("Right"), self.fullscreen_widget, self.next_word)
+        QShortcut(QKeySequence("R"), self.fullscreen_widget, self.reset_position)
         
         # Show fullscreen
         self.fullscreen_widget.showFullScreen()
