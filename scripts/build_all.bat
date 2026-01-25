@@ -7,6 +7,16 @@ echo.
 REM Change to project root directory
 cd ..
 
+REM Clean up old build artifacts to avoid file locks
+if exist "dist\SpeedReader.exe" (
+    echo Cleaning up old executable...
+    REM Give any running processes time to release the file
+    timeout /t 2 /nobreak >nul
+    del /F /Q "dist\SpeedReader.exe" 2>nul
+    REM Give filesystem time to update
+    timeout /t 1 /nobreak >nul
+)
+
 echo [1/4] Running tests...
 echo.
 python -m unittest tests.test_basic -v
@@ -31,8 +41,8 @@ if errorlevel 1 (
     pip install pyinstaller
 )
 
-REM Build the executable
-pyinstaller --name=SpeedReader --onefile --windowed --hidden-import=PyQt6.QtCore --hidden-import=PyQt6.QtGui --hidden-import=PyQt6.QtWidgets --hidden-import=ebooklib --hidden-import=docx --hidden-import=PyPDF2 --hidden-import=bs4 --hidden-import=lxml --hidden-import=pyttsx3 --hidden-import=pyttsx3.drivers --collect-all=PyQt6 --add-data="src;src" src/speed_reader/main.py
+REM Build the executable with --clean flag to force rebuild
+pyinstaller --clean --name=SpeedReader --onefile --windowed --hidden-import=PyQt6.QtCore --hidden-import=PyQt6.QtGui --hidden-import=PyQt6.QtWidgets --hidden-import=ebooklib --hidden-import=docx --hidden-import=PyPDF2 --hidden-import=bs4 --hidden-import=lxml --hidden-import=pyttsx3 --hidden-import=pyttsx3.drivers --collect-all=PyQt6 --add-data="src;src" src/speed_reader/main.py
 
 if errorlevel 1 (
     echo.

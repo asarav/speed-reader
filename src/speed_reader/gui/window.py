@@ -44,6 +44,7 @@ class SpeedReaderWindow(QMainWindow):
         self.update_recent_files()  # Initialize recent files dropdown
         self.load_last_file()  # Ask to load last file
         self.update_font_sizes()  # Set initial font size
+        self.validate_tts_controls()  # Validate TTS controls based on WPM
     
     def resizeEvent(self, event: QResizeEvent):
         """Handle window resize to scale fonts."""
@@ -260,7 +261,7 @@ class SpeedReaderWindow(QMainWindow):
         # Add speed preset dropdown
         wpm_layout.addWidget(QLabel("Presets:"))
         self.speed_combo = QComboBox()
-        self.speed_combo.addItems(["200", "250", "300", "350", "400", "500", "600", "700", "800", "900", "1000"])
+        self.speed_combo.addItems(["50", "75", "100", "125", "150", "175", "192", "250", "300", "350", "400", "500", "600", "700", "800", "900", "1000"])
         self.speed_combo.setCurrentText(str(self.wpm))  # Set to loaded speed
         self.speed_combo.setFixedWidth(60)
         self.speed_combo.currentTextChanged.connect(self.on_speed_preset_changed)
@@ -366,6 +367,16 @@ class SpeedReaderWindow(QMainWindow):
         """Setup the timer for word display."""
         self.timer = QTimer()
         self.timer.timeout.connect(self.show_next_word)
+    
+    def validate_tts_controls(self):
+        """Validate TTS controls based on current WPM."""
+        if self.wpm > 192:
+            self.tts_checkbox.setEnabled(False)
+            if self.tts.enabled:
+                self.tts_checkbox.setChecked(False)
+                self.on_tts_toggled(False)
+        else:
+            self.tts_checkbox.setEnabled(True)
     
     def load_file(self):
         """Load a file using file dialog."""
@@ -527,6 +538,16 @@ class SpeedReaderWindow(QMainWindow):
     def on_wpm_changed(self, value: int):
         """Handle WPM change."""
         self.wpm = value
+        
+        # Disable TTS if WPM > 192 (pyttsx3 Windows SAPI limitation)
+        if value > 192:
+            self.tts_checkbox.setEnabled(False)
+            if self.tts.enabled:
+                self.tts_checkbox.setChecked(False)
+                self.on_tts_toggled(False)
+        else:
+            self.tts_checkbox.setEnabled(True)
+        
         self.tts.set_wpm(value)
         if self.is_playing:
             self.start_reading()
@@ -571,6 +592,20 @@ class SpeedReaderWindow(QMainWindow):
         self.is_playing = True
         self.play_pause_btn.setText("Pause")
         
+        # Disable WPM controls only if TTS is enabled
+        if self.tts.enabled:
+            self.wpm_spinbox.setEnabled(False)
+            self.speed_combo.setEnabled(False)
+            self.tts_checkbox.setEnabled(False)
+            
+            # Queue all remaining words to be spoken asynchronously
+            remaining_words = self.metadata.words[self.current_index:]
+            full_text = ' '.join(remaining_words)
+            self.tts.speak(full_text)
+        else:
+            # If not using TTS, disable TTS checkbox
+            self.tts_checkbox.setEnabled(False)
+        
         # Calculate interval in milliseconds (60 seconds / wpm * 1000)
         interval = int((60.0 / self.wpm) * 1000)
         self.timer.start(interval)
@@ -582,6 +617,11 @@ class SpeedReaderWindow(QMainWindow):
         if self.timer:
             self.timer.stop()
         self.tts.stop()
+        
+        # Re-enable all controls
+        self.wpm_spinbox.setEnabled(True)
+        self.speed_combo.setEnabled(True)
+        self.tts_checkbox.setEnabled(True)
     
     def show_next_word(self):
         """Show the next word (called by timer)."""
@@ -782,10 +822,6 @@ class SpeedReaderWindow(QMainWindow):
         if 0 <= self.current_index < len(self.metadata.words):
             word = self.metadata.words[self.current_index]
             self.fullscreen_word_label.setText(word)
-            
-            # Speak the word if TTS is enabled
-            if self.tts.enabled:
-                self.tts.speak(word)
         else:
             self.fullscreen_word_label.setText("No words available")
         
@@ -864,10 +900,6 @@ class SpeedReaderWindow(QMainWindow):
         if 0 <= self.current_index < len(self.metadata.words):
             word = self.metadata.words[self.current_index]
             self.word_label.setText(word)
-            
-            # Speak the word if TTS is enabled
-            if self.tts.enabled:
-                self.tts.speak(word)
                 
             # Update fullscreen display if active
             if self.is_fullscreen:

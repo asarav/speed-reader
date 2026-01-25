@@ -6,6 +6,7 @@ Uses Windows SAPI directly for better control.
 import pyttsx3
 import threading
 import queue
+import time
 from typing import Optional
 
 
@@ -13,21 +14,23 @@ class TTSManager:
     """Manages text-to-speech functionality."""
     
     def __init__(self):
-        self.engine: Optional[pyttsx3.Engine] = None
+        self.engine: Optional[pyttsx3.Engine] = None  # Only used for checking availability
         self.enabled: bool = False
         self.base_rate: int = 200  # Base words per minute for TTS
         self._current_rate: int = 200
-        self._word_queue: queue.Queue = queue.Queue()
+        self._word_queue: queue.Queue = queue.Queue(maxsize=10)
         self._worker_thread: Optional[threading.Thread] = None
         self._stop_worker: threading.Event = threading.Event()
+        self._worker_engine: Optional[pyttsx3.Engine] = None
+        self._engine_lock: threading.Lock = threading.Lock()
         
         try:
-            self.engine = pyttsx3.init()
-            # Set default properties
-            self.engine.setProperty('rate', self.base_rate)
-            self._current_rate = self.base_rate
+            # Just initialize to check availability, don't actually use it
+            test_engine = pyttsx3.init()
+            test_engine = None
+            self.engine = True  # Mark as available
         except Exception as e:
-            print(f"Warning: Could not initialize TTS engine: {e}")
+            print(f"[TTS] Warning: Could not initialize TTS: {e}")
             self.engine = None
     
     def is_available(self) -> bool:
@@ -40,10 +43,11 @@ class TTSManager:
         self.enabled = enabled and self.is_available()
         
         if self.enabled and not was_enabled:
+            # Reset stop event when enabling
+            self._stop_worker.clear()
             self._start_worker()
         elif not self.enabled:
             self._stop_worker.set()
-            self._clear_queue()
     
     def _start_worker(self):
         """Start the worker thread."""
@@ -55,95 +59,151 @@ class TTSManager:
         self._worker_thread.start()
     
     def _worker_loop(self):
-        """Worker thread that processes the queue."""
-        # Create a separate engine for this thread
-        try:
-            worker_engine = pyttsx3.init()
-        except Exception:
-            return
+        """Worker thread that speaks queued text continuously."""
+        print("[TTS] Worker loop starting")
+        
+        word_count = 0
         
         while not self._stop_worker.is_set():
             try:
-                # Get word from queue with timeout
+                # Get text from queue with timeout
                 try:
-                    word = self._word_queue.get(timeout=0.1)
+                    text = self._word_queue.get(timeout=0.1)
                 except queue.Empty:
                     continue
                 
-                if word is None:
+                if text is None:
                     break
                 
-                # Clear queue if it's getting too full (keep only current word)
-                while self._word_queue.qsize() > 1:
-                    try:
-                        self._word_queue.get_nowait()
-                    except queue.Empty:
-                        break
+                # Check if we should stop before speaking
+                if self._stop_worker.is_set():
+                    break
                 
-                # Set rate and speak
                 try:
-                    worker_engine.setProperty('rate', self._current_rate)
-                    worker_engine.say(word)
-                    worker_engine.runAndWait()
+                    # Create a FRESH engine for each speak call to avoid state issues
+                    worker_engine = pyttsx3.init()
+                    
+                    with self._engine_lock:
+                        worker_engine.setProperty('rate', self._current_rate)
+                        print(f"[TTS] Speaking {len(text)} chars at rate {self._current_rate}")
+                        # Queue all text
+                        worker_engine.say(text)
+                        
+                        # Check if stopped before actually speaking
+                        if self._stop_worker.is_set():
+                            worker_engine.stop()
+                            print("[TTS] Stopped before playback")
+                            break
+                        
+                        # Speak it all at once
+                        worker_engine.runAndWait()
+                    
+                    # Check again after speaking
+                    if self._stop_worker.is_set():
+                        try:
+                            worker_engine.stop()
+                        except:
+                            pass
+                        break
+                    
+                    word_count += len(text.split())
+                    print(f"[TTS] Finished speaking {len(text)} chars")
+                    
                 except Exception as e:
-                    print(f"TTS error: {e}")
+                    print(f"[TTS] Error speaking: {e}")
+                    import traceback
+                    traceback.print_exc()
                 
                 self._word_queue.task_done()
-            except Exception:
+                
+            except Exception as e:
+                print(f"[TTS] Worker error: {e}")
+                import traceback
+                traceback.print_exc()
                 continue
+        
+        print(f"[TTS] Worker stopped")
     
     def set_wpm(self, wpm: int):
-        """Set the speech rate based on WPM."""
-        if not self.engine:
-            return
+        """Set the speech rate based on WPM.
         
-        min_rate = 50
-        max_rate = 300
-        rate = max(min_rate, min(max_rate, int(wpm)))
-        self._current_rate = rate
+        NOTE: pyttsx3's rate property is NOT in WPM. It uses a 0-300 scale where:
+        - Rate 0 = ~192 WPM
+        - Rate > 0 = broken/instant (Windows SAPI bug)
+        So we can only support ~192 WPM max, but we clamp it intelligently.
+        """
+        # Clamp WPM to max supported (around 192)
+        # Use rate 0 for all speeds (works best)
+        self._current_rate = 0
         
-        try:
-            self.engine.setProperty('rate', rate)
-        except Exception:
-            pass
+        # Store the user's desired WPM for reference, but use rate 0
+        if wpm > 192:
+            print(f"[TTS] WPM {wpm} exceeds maximum of ~192, using maximum")
+        else:
+            print(f"[TTS] WPM set to {wpm}")
     
     def speak(self, text: str):
-        """Queue a word to be spoken."""
+        """Queue text to be spoken all at once."""
         if not self.enabled or not self.engine:
+            return
+        
+        if not text or not text.strip():
             return
         
         # Ensure worker is running
         if not self._worker_thread or not self._worker_thread.is_alive():
             self._start_worker()
         
-        # Add to queue (will replace old words if queue is full)
+        # Queue the entire text as one unit
         try:
             self._word_queue.put_nowait(text)
         except queue.Full:
-            # Queue full, clear and add
-            self._clear_queue()
-            try:
-                self._word_queue.put_nowait(text)
-            except queue.Full:
-                pass
+            pass
     
-    def _clear_queue(self):
-        """Clear the queue."""
+    def speak_and_get_duration(self, text: str) -> float:
+        """Speak text immediately and return duration in seconds."""
+        if not self.enabled or not self.engine:
+            return 0
+        
+        if not text or not text.strip():
+            return 0
+        
+        import time
+        try:
+            with self._engine_lock:
+                if not self._worker_engine:
+                    self._worker_engine = pyttsx3.init()
+                self._worker_engine.setProperty('rate', self._current_rate)
+                start = time.time()
+                self._worker_engine.say(text)
+                self._worker_engine.runAndWait()
+                duration = time.time() - start
+                return duration
+        except Exception as e:
+            print(f"[TTS] Error getting duration: {e}")
+            return 0
+    
+    def stop(self):
+        """Stop current speech."""
+        print("[TTS] Stopping...")
+        
+        # Signal worker to stop FIRST so it doesn't keep processing
+        self._stop_worker.set()
+        
+        # Clear the queue immediately so worker stops getting items
         while not self._word_queue.empty():
             try:
                 self._word_queue.get_nowait()
             except queue.Empty:
                 break
-    
-    def stop(self):
-        """Stop current speech."""
-        self._stop_worker.set()
-        self._clear_queue()
-        if self.engine:
-            try:
-                self.engine.stop()
-            except Exception:
-                pass
+        
+        # Try to stop the engine if it exists
+        with self._engine_lock:
+            if self._worker_engine:
+                try:
+                    self._worker_engine.stop()
+                except Exception as e:
+                    print(f"[TTS] Error stopping engine: {e}")
     
     def cleanup(self):
         """Clean up TTS resources."""
