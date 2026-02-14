@@ -24,6 +24,9 @@ pyinstaller --name=SpeedReader \
     --hidden-import=lxml \
     --hidden-import=pyttsx3 \
     --hidden-import=pyttsx3.drivers \
+    --hidden-import=nltk \
+    --hidden-import=nltk.tag \
+    --hidden-import=nltk.tag.perceptron \
     --collect-all=PyQt6 \
     --add-data="src:src" \
     src/speed_reader/main.py

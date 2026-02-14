@@ -4,8 +4,8 @@ echo Speed Reader - Complete Build Script
 echo ========================================
 echo.
 
-REM Change to project root directory
-cd ..
+REM Change to project root directory (use script location so calling dir doesn't matter)
+pushd "%~dp0\.."
 
 REM Clean up old build artifacts to avoid file locks
 if exist "dist\SpeedReader.exe" (
@@ -23,7 +23,7 @@ python -m unittest tests.test_basic -v
 if errorlevel 1 (
     echo.
     echo Tests failed! Aborting build.
-    cd scripts
+    cd /d "%~dp0"
     pause
     exit /b 1
 )
@@ -42,12 +42,12 @@ if errorlevel 1 (
 )
 
 REM Build the executable with --clean flag to force rebuild
-pyinstaller --clean --name=SpeedReader --onefile --windowed --hidden-import=PyQt6.QtCore --hidden-import=PyQt6.QtGui --hidden-import=PyQt6.QtWidgets --hidden-import=ebooklib --hidden-import=docx --hidden-import=PyPDF2 --hidden-import=bs4 --hidden-import=lxml --hidden-import=pyttsx3 --hidden-import=pyttsx3.drivers --collect-all=PyQt6 --add-data="src;src" src/speed_reader/main.py
+pyinstaller --clean --name=SpeedReader --onefile --windowed --hidden-import=PyQt6.QtCore --hidden-import=PyQt6.QtGui --hidden-import=PyQt6.QtWidgets --hidden-import=ebooklib --hidden-import=docx --hidden-import=PyPDF2 --hidden-import=bs4 --hidden-import=lxml --hidden-import=pyttsx3 --hidden-import=pyttsx3.drivers --hidden-import=nltk --hidden-import=nltk.tag --hidden-import=nltk.tag.perceptron --collect-all=PyQt6 --add-data="src;src" src/speed_reader/main.py
 
 if errorlevel 1 (
     echo.
     echo Executable build failed!
-    cd scripts
+    cd /d "%~dp0"
     pause
     exit /b 1
 )
@@ -63,7 +63,7 @@ python setup.py sdist bdist_wheel
 if errorlevel 1 (
     echo.
     echo Python package build failed!
-    cd scripts
+    cd /d "%~dp0"
     pause
     exit /b 1
 )
@@ -111,6 +111,7 @@ dir /b dist\
 echo.
 echo Ready for release!
 echo.
-cd scripts
+popd
+cd /d "%~dp0"
 pause
 pause

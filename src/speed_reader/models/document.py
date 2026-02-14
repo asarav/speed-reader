@@ -1,5 +1,5 @@
 """Document metadata model."""
-from typing import List, Dict
+from typing import List, Dict, Optional
 from dataclasses import dataclass
 
 
@@ -12,3 +12,4 @@ class DocumentMetadata:
     page_count: int
     chapter_names: List[str]
     file_type: str  # 'pdf', 'epub', 'docx', 'txt', 'text'
+    word_pos: Optional[List[str]] = None  # Penn Treebank POS tags, one per word (for color coding)

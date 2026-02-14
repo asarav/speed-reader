@@ -4,11 +4,13 @@ Main window for the speed reader application.
 """
 import sys
 import os
+import time
 from typing import Optional
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QPushButton, QLabel, QFileDialog, QSlider, QSpinBox, QTextEdit,
-    QGroupBox, QProgressBar, QMessageBox, QCheckBox, QComboBox, QSizePolicy
+    QGroupBox, QProgressBar, QMessageBox, QCheckBox, QComboBox, QSizePolicy,
+    QDialog, QDialogButtonBox, QScrollArea, QFrame
 )
 from PyQt6.QtCore import QTimer, Qt
 from PyQt6.QtGui import QKeySequence, QShortcut, QFont, QResizeEvent
@@ -16,6 +18,8 @@ from ..parsers.file_parser import FileParser
 from ..models.document import DocumentMetadata
 from ..tts.manager import TTSManager
 from ..utils.file_history import FileHistory
+from ..utils.pos_tagger import tag_words, get_style_for_tag
+from ..utils.summarizer import summarize_text, MIN_CHARS_FOR_SUMMARY
 from .styles import get_stylesheet
 
 
@@ -39,6 +43,13 @@ class SpeedReaderWindow(QMainWindow):
         self.is_fullscreen: bool = False
         self.fullscreen_widget: Optional[QWidget] = None
         
+        # Part-of-speech color coding (pronouns, nouns, verbs)
+        self.color_by_pos: bool = False
+        
+        # Session tracking for summary (from last reset or file load)
+        self.session_start_index: int = 0
+        self.session_start_time: float = 0.0
+        
         self.init_ui()
         self.setup_timer()
         self.update_recent_files()  # Initialize recent files dropdown
@@ -51,48 +62,49 @@ class SpeedReaderWindow(QMainWindow):
         super().resizeEvent(event)
         self.update_font_sizes()
     
-    def update_font_sizes(self):
-        """Update font sizes based on window size."""
+    def _word_label_stylesheet(self, color: str = "#ffffff", bold: bool = False, italic: bool = False) -> str:
+        """Build main reading label stylesheet with optional POS color and styling."""
         height = self.height()
-        
-        # Scale font size based on window height with better proportions
-        # Base size of 36px, scale up for larger windows
         base_size = 36
-        scale_factor = min(4.0, height / 400.0)  # Scale up to 4x for tall windows (144px max)
-        font_size = int(base_size * scale_factor)
-        
-        # Ensure reasonable bounds - increased maximum
-        font_size = max(24, min(144, font_size))
-        
-        # Update the stylesheet with the new font size
-        self.word_label.setStyleSheet(f"""
+        scale_factor = min(4.0, height / 400.0)
+        font_size = max(24, min(144, int(base_size * scale_factor)))
+        fw = "bold" if bold else "600"
+        fs = "italic" if italic else "normal"
+        return f"""
             QLabel {{
                 font-size: {font_size}px;
-                font-weight: 600;
+                font-weight: {fw};
+                font-style: {fs};
                 padding: 15px 10px;
                 background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
                     stop:0 #2d2d2d, stop:1 #1e1e1e);
-                color: #ffffff;
+                color: {color};
                 border: 2px solid #4a9eff;
                 border-radius: 8px;
                 letter-spacing: 1px;
                 min-height: 60px;
             }}
-        """)
+        """
+    
+    def update_font_sizes(self):
+        """Update font sizes based on window size."""
+        height = self.height()
+        base_size = 36
+        scale_factor = min(4.0, height / 400.0)
+        font_size = max(24, min(144, int(base_size * scale_factor)))
         
-        # Also scale fullscreen font if in fullscreen
+        # Main word label: apply POS style if color coding is on
+        if self.color_by_pos and self.metadata and self.metadata.word_pos and 0 <= self.current_index < len(self.metadata.word_pos):
+            color, bold, italic = get_style_for_tag(self.metadata.word_pos[self.current_index])
+            self.word_label.setStyleSheet(self._word_label_stylesheet(color, bold, italic))
+        else:
+            self.word_label.setStyleSheet(self._word_label_stylesheet())
+        
+        # Fullscreen: scale font and re-apply display (which applies POS if enabled)
         if self.is_fullscreen and hasattr(self, 'fullscreen_word_label'):
-            fs_font_size = max(48, min(200, self.height() // 4))  # More aggressive scaling for fullscreen
-            fs_stylesheet = f"""
-                QLabel {{
-                    color: #ffffff;
-                    background-color: #000000;
-                    padding: 10px 0px;
-                    font-size: {fs_font_size}px;
-                    font-weight: bold;
-                }}
-            """
-            self.fullscreen_word_label.setStyleSheet(fs_stylesheet)
+            fs_font_size = max(48, min(200, self.height() // 4))
+            self._fs_font_size = fs_font_size
+            self.update_fullscreen_display()
     
     def init_ui(self):
         """Initialize the user interface."""
@@ -237,6 +249,12 @@ class SpeedReaderWindow(QMainWindow):
             }
         """)
         display_layout.addWidget(self.word_label, stretch=1)  # Allow stretching
+        # Color by part of speech (pronouns, nouns, verbs) for better comprehension
+        self.color_by_pos_checkbox = QCheckBox("Color by part of speech (pronouns, nouns, verbs)")
+        self.color_by_pos_checkbox.setToolTip("Use distinct colors and styling for pronouns (orange/italic), nouns (blue/bold), and verbs (green/italic) to aid comprehension.")
+        self.color_by_pos_checkbox.setEnabled(False)
+        self.color_by_pos_checkbox.stateChanged.connect(self.on_color_by_pos_changed)
+        display_layout.addWidget(self.color_by_pos_checkbox)
         display_group.setLayout(display_layout)
         
         # Controls group
@@ -301,10 +319,16 @@ class SpeedReaderWindow(QMainWindow):
         self.fullscreen_btn.clicked.connect(self.toggle_fullscreen)
         self.fullscreen_btn.setEnabled(False)
         
+        self.summary_btn = QPushButton("Summary")
+        self.summary_btn.setToolTip("Show summary of everything read this session")
+        self.summary_btn.clicked.connect(self.show_session_summary)
+        self.summary_btn.setEnabled(False)
+        
         button_layout.addWidget(self.prev_word_btn)
         button_layout.addWidget(self.play_pause_btn)
         button_layout.addWidget(self.next_word_btn)
         button_layout.addWidget(self.reset_btn)
+        button_layout.addWidget(self.summary_btn)
         button_layout.addWidget(self.fullscreen_btn)
         controls_layout.addLayout(button_layout)
         
@@ -344,6 +368,7 @@ class SpeedReaderWindow(QMainWindow):
         # View menu
         view_menu = menubar.addMenu('View')
         view_menu.addAction('Fullscreen', self.toggle_fullscreen)
+        view_menu.addAction('Session summary', self.show_session_summary)
         
         # Help menu
         help_menu = menubar.addMenu('Help')
@@ -353,6 +378,76 @@ class SpeedReaderWindow(QMainWindow):
         """Show about dialog."""
         QMessageBox.about(self, "About Speed Reader", 
                          "Speed Reader v1.0\n\nA fast text reading application with TTS support.")
+    
+    def show_session_summary(self):
+        """Show a popup summary of everything read in this speed reading session."""
+        if not self.metadata or not self.metadata.words:
+            QMessageBox.information(self, "Session summary", "No document loaded.")
+            return
+        total_words = len(self.metadata.words)
+        words_read = max(0, self.current_index - self.session_start_index)
+        elapsed_sec = max(0.0, time.time() - self.session_start_time)
+        elapsed_min = elapsed_sec / 60.0 if elapsed_sec > 0 else 0
+        effective_wpm = int(words_read / elapsed_min) if elapsed_min > 0 else 0
+        pct_doc = int((self.current_index / total_words) * 100) if total_words > 0 else 0
+        start = self.session_start_index
+        end = self.current_index
+        session_text = " ".join(self.metadata.words[start:end]) if start < end else ""
+        result = summarize_text(session_text, max_sentences=8)
+        if result:
+            summary_paragraphs, is_abstractive = result
+            summary_heading = "——— Summary ———" if is_abstractive else "——— Key excerpts (from the text you read) ———"
+            summary_note = "" if is_abstractive else "\n(To enable condensed abstractive summaries, set SUMMARIZER_USE_API=1 and OPENAI_API_KEY.)\n"
+        else:
+            summary_paragraphs = (
+                f"(Not enough text read yet. Read at least {MIN_CHARS_FOR_SUMMARY} characters to get key excerpts.)"
+            )
+            summary_heading = "——— Summary ———"
+            summary_note = ""
+        # Excerpt for reference (cap at 400 words)
+        excerpt_words = self.metadata.words[start:end]
+        max_excerpt = 400
+        if len(excerpt_words) > max_excerpt:
+            excerpt = " ".join(excerpt_words[: max_excerpt // 2]) + " ... [ ... ] ... " + " ".join(excerpt_words[-(max_excerpt // 2):])
+        else:
+            excerpt = " ".join(excerpt_words) if excerpt_words else "(none yet)"
+        title = os.path.basename(self.file_path) if self.file_path else "Pasted text"
+        lines = [
+            f"Session: {title}",
+            "",
+            summary_heading,
+            summary_note,
+            summary_paragraphs,
+            "",
+            "——— Stats ———",
+            f"Words read this session: {words_read:,}",
+            f"Time in session: {int(elapsed_sec // 60)} min {int(elapsed_sec % 60)} sec",
+            f"Effective WPM this session: {effective_wpm}",
+            f"Current position: word {self.current_index + 1:,} of {total_words:,} ({pct_doc}% of document)",
+            "",
+            "——— Text read this session ———",
+            "",
+            excerpt,
+        ]
+        summary_text = "\n".join(lines)
+        dlg = QDialog(self)
+        dlg.setWindowTitle("Session summary")
+        dlg.setMinimumSize(500, 400)
+        layout = QVBoxLayout(dlg)
+        area = QScrollArea()
+        area.setWidgetResizable(True)
+        area.setFrameShape(QFrame.Shape.NoFrame)
+        area.setStyleSheet("QScrollArea { background: transparent; }")
+        te = QTextEdit()
+        te.setReadOnly(True)
+        te.setPlainText(summary_text)
+        te.setStyleSheet("font-family: 'Segoe UI', sans-serif; font-size: 12px; padding: 8px;")
+        area.setWidget(te)
+        layout.addWidget(area)
+        btn = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok)
+        btn.accepted.connect(dlg.accept)
+        layout.addWidget(btn)
+        dlg.exec()
     
     def setup_shortcuts(self):
         """Setup keyboard shortcuts."""
@@ -420,6 +515,28 @@ class SpeedReaderWindow(QMainWindow):
                 self.metadata = metadata
                 self.file_path = file_path
                 self.file_label.setText(f"Loaded: {os.path.basename(file_path)} ({len(metadata.words)} words)")
+                # Part-of-speech tagging for color coding (optional); trigger download if needed
+                self.file_label.setText(f"Tagging words: {os.path.basename(file_path)}...")
+                QApplication.processEvents()
+                self.metadata.word_pos = tag_words(self.metadata.words, ensure_download=True)
+                self.file_label.setText(f"Loaded: {os.path.basename(file_path)} ({len(metadata.words)} words)")
+                self.color_by_pos_checkbox.setEnabled(self.metadata.word_pos is not None)
+                if self.metadata.word_pos is None:
+                    self.color_by_pos_checkbox.setToolTip(
+                        "Part-of-speech tagging unavailable. Install NLTK: pip install nltk\n"
+                        "Then in a terminal run: python -m nltk.downloader averaged_perceptron_tagger"
+                    )
+                    if not getattr(self, "_pos_unavailable_message_shown", False):
+                        self._pos_unavailable_message_shown = True
+                        QMessageBox.information(
+                            self,
+                            "Color by part of speech",
+                            "Part-of-speech tagging is not available, so the option is disabled.\n\n"
+                            "To enable it:\n"
+                            "1. Install NLTK: pip install nltk\n"
+                            "2. In a terminal, run: python -m nltk.downloader averaged_perceptron_tagger\n\n"
+                            "Then load this file again.",
+                        )
                 
                 # Add to file history
                 self.file_history.add_file(file_path)
@@ -474,10 +591,15 @@ class SpeedReaderWindow(QMainWindow):
         self.position_slider.setMaximum(len(self.metadata.words) - 1)
         self.progress_bar.setMaximum(len(self.metadata.words) - 1)
         
+        # Start of this reading session (for summary)
+        self.session_start_index = self.current_index
+        self.session_start_time = time.time()
+        
         self.play_pause_btn.setEnabled(True)
         self.reset_btn.setEnabled(True)
         self.prev_word_btn.setEnabled(True)
         self.next_word_btn.setEnabled(True)
+        self.summary_btn.setEnabled(True)
         self.fullscreen_btn.setEnabled(True)
         
         # Populate chapter combo box
@@ -573,6 +695,13 @@ class SpeedReaderWindow(QMainWindow):
         """Handle TTS checkbox toggle."""
         enabled = state == Qt.CheckState.Checked.value or state == 2
         self.tts.set_enabled(enabled)
+    
+    def on_color_by_pos_changed(self, state: int):
+        """Handle color-by-POS checkbox toggle."""
+        self.color_by_pos = state == Qt.CheckState.Checked.value or state == 2
+        self.update_display()
+        if self.is_fullscreen:
+            self.update_fullscreen_display()
     
     def toggle_play_pause(self):
         """Toggle play/pause state."""
@@ -671,6 +800,8 @@ class SpeedReaderWindow(QMainWindow):
         """Reset to beginning."""
         self.pause_reading()
         self.current_index = 0
+        self.session_start_index = 0
+        self.session_start_time = time.time()
         self.update_display()
         self.update_progress()
         self.update_position_info()
@@ -696,27 +827,28 @@ class SpeedReaderWindow(QMainWindow):
         fullscreen_layout = QVBoxLayout(self.fullscreen_widget)
         fullscreen_layout.setContentsMargins(0, 0, 0, 0)
         
-        # Create a horizontal layout for the three words
+        # Use most of the screen width: 1:2:1 columns, minimal side margins, no empty stretches
         words_layout = QHBoxLayout()
-        words_layout.setSpacing(30)  # Reduced spacing between words
-        words_layout.setContentsMargins(30, 0, 30, 0)  # Reduced margins
+        words_layout.setSpacing(48)
+        words_layout.setContentsMargins(40, 0, 40, 0)
         
-        # Previous word label
+        # Previous word: 1 part width, wrap so long words aren't cut off
         self.prev_word_label = QLabel()
         prev_font = QFont()
-        prev_font.setPointSize(48)  # Smaller than current word
+        prev_font.setPointSize(48)
         prev_font.setWeight(QFont.Weight.Normal)
         self.prev_word_label.setFont(prev_font)
         self.prev_word_label.setStyleSheet("color: #666666; background-color: #000000;")
         self.prev_word_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        self.prev_word_label.setWordWrap(True)
         self.prev_word_label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+        words_layout.addWidget(self.prev_word_label, 1)
         
-        # Current word label (main focus)
+        # Current word (center): 2 parts so it stays prominent
         self.fullscreen_word_label = QLabel()
         self.fullscreen_word_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        # Make the font responsive for fullscreen
         font = QFont()
-        font.setPointSize(96)  # Large but not as huge for better responsiveness
+        font.setPointSize(96)
         font.setWeight(QFont.Weight.Bold)
         self.fullscreen_word_label.setFont(font)
         self.fullscreen_word_label.setStyleSheet("""
@@ -728,22 +860,33 @@ class SpeedReaderWindow(QMainWindow):
             }
         """)
         self.fullscreen_word_label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        self.fullscreen_word_label.setMinimumWidth(200)
+        words_layout.addWidget(self.fullscreen_word_label, 2)
         
-        # Next word label
+        # Next word: 1 part width, wrap
         self.next_word_label = QLabel()
         next_font = QFont()
-        next_font.setPointSize(48)  # Smaller than current word
+        next_font.setPointSize(48)
         next_font.setWeight(QFont.Weight.Normal)
         self.next_word_label.setFont(next_font)
         self.next_word_label.setStyleSheet("color: #666666; background-color: #000000;")
         self.next_word_label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+        self.next_word_label.setWordWrap(True)
         self.next_word_label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+        words_layout.addWidget(self.next_word_label, 1)
         
-        # Add words to horizontal layout
-        words_layout.addWidget(self.prev_word_label, stretch=1)
-        words_layout.addWidget(self.fullscreen_word_label, stretch=2)
-        words_layout.addWidget(self.next_word_label, stretch=1)
-        
+        # Top bar: progress and time remaining (left), exit button (right)
+        top_bar = QHBoxLayout()
+        top_bar.setContentsMargins(20, 20, 20, 0)
+        # Percentage and time-remaining labels
+        self.fullscreen_progress_label = QLabel()
+        self.fullscreen_progress_label.setStyleSheet("color: #aaaaaa; font-size: 18px; background: transparent;")
+        self.fullscreen_time_label = QLabel()
+        self.fullscreen_time_label.setStyleSheet("color: #aaaaaa; font-size: 18px; background: transparent;")
+        top_bar.addWidget(self.fullscreen_progress_label)
+        top_bar.addSpacing(16)
+        top_bar.addWidget(self.fullscreen_time_label)
+        top_bar.addStretch()
         # Exit button (small, top-right corner)
         exit_btn = QPushButton("✕")
         exit_btn.setFixedSize(50, 50)
@@ -761,9 +904,10 @@ class SpeedReaderWindow(QMainWindow):
             }
         """)
         exit_btn.clicked.connect(self.exit_fullscreen)
+        top_bar.addWidget(exit_btn)
         
         # Layout for fullscreen
-        fullscreen_layout.addWidget(exit_btn, alignment=Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignRight)
+        fullscreen_layout.addLayout(top_bar)
         fullscreen_layout.addStretch()
         fullscreen_layout.addLayout(words_layout)
         fullscreen_layout.addStretch()
@@ -774,6 +918,9 @@ class SpeedReaderWindow(QMainWindow):
         QShortcut(QKeySequence("Left"), self.fullscreen_widget, self.previous_word)
         QShortcut(QKeySequence("Right"), self.fullscreen_widget, self.next_word)
         QShortcut(QKeySequence("R"), self.fullscreen_widget, self.reset_position)
+        
+        # Font size for fullscreen (updated on resize)
+        self._fs_font_size = max(48, min(200, 96))
         
         # Show fullscreen
         self.fullscreen_widget.showFullScreen()
@@ -800,6 +947,22 @@ class SpeedReaderWindow(QMainWindow):
         self.show()
         self.activateWindow()
     
+    def _fullscreen_label_stylesheet(self, font_size_pt: int, color: str, bold: bool, italic: bool) -> str:
+        """Build fullscreen word label stylesheet."""
+        fw = "bold" if bold else "normal"
+        fs = "italic" if italic else "normal"
+        return f"""
+            QLabel {{
+                color: {color};
+                background-color: #000000;
+                padding: 10px 0px;
+                min-height: 80px;
+                font-size: {font_size_pt}pt;
+                font-weight: {fw};
+                font-style: {fs};
+            }}
+        """
+    
     def update_fullscreen_display(self):
         """Update the fullscreen word display."""
         if not self.is_fullscreen or not self.fullscreen_widget:
@@ -811,26 +974,66 @@ class SpeedReaderWindow(QMainWindow):
             self.next_word_label.setText("")
             return
         
+        pos_list = self.metadata.word_pos if self.color_by_pos else None
+        fs_font_size = getattr(self, '_fs_font_size', 96)
+        def style_for(i: int):
+            if pos_list and 0 <= i < len(pos_list):
+                return get_style_for_tag(pos_list[i])
+            return ("#666666", False, False) if (i != self.current_index) else ("#ffffff", True, False)
+        
         # Previous word
         if self.current_index > 0:
             prev_word = self.metadata.words[self.current_index - 1]
             self.prev_word_label.setText(prev_word)
+            c, b, it = style_for(self.current_index - 1)
+            self.prev_word_label.setStyleSheet(self._fullscreen_label_stylesheet(48, c, b, it))
         else:
             self.prev_word_label.setText("")
+            self.prev_word_label.setStyleSheet(self._fullscreen_label_stylesheet(48, "#666666", False, False))
         
         # Current word
         if 0 <= self.current_index < len(self.metadata.words):
             word = self.metadata.words[self.current_index]
             self.fullscreen_word_label.setText(word)
+            c, b, it = style_for(self.current_index)
+            self.fullscreen_word_label.setStyleSheet(self._fullscreen_label_stylesheet(fs_font_size, c, b, it))
         else:
             self.fullscreen_word_label.setText("No words available")
+            self.fullscreen_word_label.setStyleSheet(self._fullscreen_label_stylesheet(fs_font_size, "#ffffff", True, False))
         
         # Next word
         if self.current_index < len(self.metadata.words) - 1:
             next_word = self.metadata.words[self.current_index + 1]
             self.next_word_label.setText(next_word)
+            c, b, it = style_for(self.current_index + 1)
+            self.next_word_label.setStyleSheet(self._fullscreen_label_stylesheet(48, c, b, it))
         else:
             self.next_word_label.setText("")
+            self.next_word_label.setStyleSheet(self._fullscreen_label_stylesheet(48, "#666666", False, False))
+        
+        # Progress: percentage of book
+        total = len(self.metadata.words)
+        percentage = int((self.current_index / total) * 100) if total > 0 else 0
+        self.fullscreen_progress_label.setText(f"{percentage}%")
+        
+        # Time remaining at current WPM (remaining words / wpm = minutes)
+        remaining_words = max(0, total - self.current_index - 1)
+        if remaining_words == 0:
+            self.fullscreen_time_label.setText("Complete")
+        elif self.wpm <= 0:
+            self.fullscreen_time_label.setText("—")
+        else:
+            remaining_minutes = remaining_words / self.wpm
+            if remaining_minutes < 1:
+                secs = int(remaining_minutes * 60)
+                self.fullscreen_time_label.setText(f"~{secs} sec left")
+            else:
+                mins = int(remaining_minutes)
+                secs = int((remaining_minutes - mins) * 60)
+                if secs > 0:
+                    self.fullscreen_time_label.setText(f"~{mins} min {secs} sec left")
+                else:
+                    self.fullscreen_time_label.setText(f"~{mins} min left")
     
     def update_position_controls(self):
         """Update position slider."""
@@ -893,6 +1096,7 @@ class SpeedReaderWindow(QMainWindow):
         """Update the word display."""
         if not self.metadata or not self.metadata.words:
             self.word_label.setText("No words available")
+            self.word_label.setStyleSheet(self._word_label_stylesheet())
             if self.is_fullscreen:
                 self.update_fullscreen_display()
             return
@@ -900,12 +1104,18 @@ class SpeedReaderWindow(QMainWindow):
         if 0 <= self.current_index < len(self.metadata.words):
             word = self.metadata.words[self.current_index]
             self.word_label.setText(word)
-                
+            # Apply POS color/styling when enabled
+            if self.color_by_pos and self.metadata.word_pos and self.current_index < len(self.metadata.word_pos):
+                color, bold, italic = get_style_for_tag(self.metadata.word_pos[self.current_index])
+                self.word_label.setStyleSheet(self._word_label_stylesheet(color, bold, italic))
+            else:
+                self.word_label.setStyleSheet(self._word_label_stylesheet())
             # Update fullscreen display if active
             if self.is_fullscreen:
                 self.update_fullscreen_display()
         else:
             self.word_label.setText("No words available")
+            self.word_label.setStyleSheet(self._word_label_stylesheet())
             if self.is_fullscreen:
                 self.update_fullscreen_display()
     

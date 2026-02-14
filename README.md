@@ -57,6 +57,8 @@ Run the application:
 python run.py
 ```
 
+On first run, the app may download NLTK part-of-speech data (for the "Color by part of speech" feature); you'll see a one-time download message in the console.
+
 Or directly:
 
 ```bash

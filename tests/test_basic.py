@@ -1,6 +1,6 @@
 """
 Basic tests for Speed Reader application.
-Run with: python tests/test_basic.py
+Run with: python tests/test_basic.py   or   python -m unittest tests.test_basic -v
 """
 import sys
 import os
@@ -12,6 +12,14 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 from speed_reader.utils.file_history import FileHistory
 from speed_reader.models.document import DocumentMetadata
 from speed_reader.parsers.file_parser import FileParser
+from speed_reader.utils.pos_tagger import (
+    get_style_for_tag,
+    tag_words,
+    ensure_nltk_pos_data,
+    PRONOUN_TAGS,
+    NOUN_TAGS,
+    VERB_TAGS,
+)
 
 
 class TestSpeedReader(unittest.TestCase):
@@ -65,13 +73,13 @@ class TestSpeedReader(unittest.TestCase):
             f.write(test_content)
         
         try:
-            parser = FileParser()
-            metadata = parser.parse_file(temp_file)
+            metadata = FileParser.parse_file(temp_file)
             
             self.assertIsNotNone(metadata)
             self.assertGreater(len(metadata.words), 0)
             self.assertEqual(metadata.file_type, "txt")
             self.assertEqual(metadata.page_count, 1)  # Text files have 1 page
+            self.assertIsNone(metadata.word_pos)  # POS not set by parser
         finally:
             # Clean up
             if os.path.exists(temp_file):
@@ -136,6 +144,67 @@ class TestSpeedReader(unittest.TestCase):
             file_type="txt"
         )
         self.assertEqual(metadata.words, words)
+
+    def test_document_metadata_word_pos_optional(self):
+        """Test DocumentMetadata with optional word_pos (POS tags)."""
+        words = ["She", "runs", "fast"]
+        metadata = DocumentMetadata(
+            words=words,
+            word_to_page={0: 1, 1: 1, 2: 1},
+            word_to_chapter={},
+            page_count=1,
+            chapter_names=[],
+            file_type="txt",
+        )
+        self.assertIsNone(metadata.word_pos)
+        metadata.word_pos = ["PRP", "VBZ", "RB"]
+        self.assertEqual(metadata.word_pos, ["PRP", "VBZ", "RB"])
+
+    def test_get_style_for_tag_pronoun(self):
+        """Test style for pronoun tags."""
+        for tag in PRONOUN_TAGS:
+            color, bold, italic = get_style_for_tag(tag)
+            self.assertEqual(color, "#f4a261")
+            self.assertFalse(bold)
+            self.assertTrue(italic)
+
+    def test_get_style_for_tag_noun(self):
+        """Test style for noun tags."""
+        for tag in NOUN_TAGS:
+            color, bold, italic = get_style_for_tag(tag)
+            self.assertEqual(color, "#7fc8f8")
+            self.assertTrue(bold)
+            self.assertFalse(italic)
+
+    def test_get_style_for_tag_verb(self):
+        """Test style for verb tags."""
+        for tag in VERB_TAGS:
+            color, bold, italic = get_style_for_tag(tag)
+            self.assertEqual(color, "#7ae582")
+            self.assertFalse(bold)
+            self.assertTrue(italic)
+
+    def test_get_style_for_tag_default(self):
+        """Test default style for unknown tags."""
+        color, bold, italic = get_style_for_tag("RB")
+        self.assertEqual(color, "#ffffff")
+        self.assertFalse(bold)
+        self.assertFalse(italic)
+
+    def test_ensure_nltk_pos_data(self):
+        """Test that ensure_nltk_pos_data runs (returns bool)."""
+        result = ensure_nltk_pos_data(quiet=True)
+        self.assertIsInstance(result, bool)
+
+    def test_tag_words_returns_list_or_none(self):
+        """Test tag_words returns list of tags when NLTK available, else None."""
+        words = ["The", "cat", "sat"]
+        result = tag_words(words)
+        if result is not None:
+            self.assertIsInstance(result, list)
+            self.assertEqual(len(result), len(words))
+            self.assertTrue(all(isinstance(t, str) for t in result))
+        # If NLTK unavailable, result is None (no assertion failure)
 
 
 if __name__ == "__main__":
