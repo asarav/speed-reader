@@ -40,6 +40,8 @@ A cross-platform speed reading application that displays one word at a time. Sup
   <source src="App Recording.mp4" type="video/mp4">
   Your browser does not support the video tag.
 </video>
+
+
 https://github.com/user-attachments/assets/d64ab0ff-d355-409e-b4d0-9c597af223df
 
 
@@ -49,6 +51,8 @@ https://github.com/user-attachments/assets/d64ab0ff-d355-409e-b4d0-9c597af223df
   <source src="Fullscreen Recording.mp4" type="video/mp4">
   Your browser does not support the video tag.
 </video>
+
+
 https://github.com/user-attachments/assets/18ddb652-9aa6-4fd3-9a95-e8127e815e61
 
 
