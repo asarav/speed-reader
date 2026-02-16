@@ -33,6 +33,20 @@ A cross-platform speed reading application that displays one word at a time. Sup
 - **Cross-Platform**: Works on Windows, Linux, and macOS
 - **Responsive UI**: Resizable window with compact, modern interface
 
+## Demo Videos
+
+### App Overview
+<video width="800" controls>
+  <source src="App Recording.mp4" type="video/mp4">
+  Your browser does not support the video tag.
+</video>
+
+### Fullscreen Reading Mode
+<video width="800" controls>
+  <source src="Fullscreen Recording.mp4" type="video/mp4">
+  Your browser does not support the video tag.
+</video>
+
 ## Requirements
 
 - Python 3.8 or higher
