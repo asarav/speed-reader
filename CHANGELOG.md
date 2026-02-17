@@ -5,6 +5,33 @@ All notable changes to Speed Reader will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.3-alpha] - 2026-02-16
+
+### Added
+- **Automated cross-platform builds** via GitHub Actions CI/CD pipeline
+- Support for building macOS `.app` bundles and DMG disk images
+- Support for building Linux standalone executables
+- Comprehensive [BUILD.md](BUILD.md) documentation with platform-specific instructions
+
+### Changed
+- Build system now uses platform-aware PyInstaller spec file for consistent builds across OS
+- Updated build scripts to leverage the spec file instead of command-line arguments
+- Enhanced build output verification with detailed file status reporting
+- Improved cleanup of old build artifacts to prevent file locking issues
+
+### Technical
+- Created `.github/workflows/release.yml` for automated builds on Windows, macOS, and Linux
+- Refactored `SpeedReader.spec` to detect platform and configure output appropriately
+- Updated `scripts/build_all.bat` and `scripts/build_all.sh` with platform detection logic
+- Added macOS-specific app bundle configuration with proper bundle identifier and plist settings
+- Automated release creation with all platform binaries attached to GitHub Releases
+
+### Infrastructure
+- CI/CD pipeline automatically triggered by version tags (`v*`)
+- Manual workflow trigger available from GitHub Actions UI
+- All platforms built and tested in parallel
+- Automatic release notes generation with artifact descriptions
+
 ## [0.0.2-alpha] - 2026-02-14
 
 ### Added

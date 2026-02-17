@@ -1,4 +1,7 @@
 @echo off
+REM Windows-specific build script for Speed Reader
+REM This script builds a Windows .exe executable
+
 echo Building Speed Reader executable for Windows...
 echo.
 
@@ -9,8 +12,9 @@ if errorlevel 1 (
     pip install pyinstaller
 )
 
-REM Build the executable
-pyinstaller --name=SpeedReader --onefile --windowed --hidden-import=PyQt6.QtCore --hidden-import=PyQt6.QtGui --hidden-import=PyQt6.QtWidgets --hidden-import=ebooklib --hidden-import=docx --hidden-import=PyPDF2 --hidden-import=bs4 --hidden-import=lxml --hidden-import=pyttsx3 --hidden-import=pyttsx3.drivers --hidden-import=nltk --hidden-import=nltk.tag --hidden-import=nltk.tag.perceptron --collect-all=PyQt6 --add-data="src;src" src/speed_reader/main.py
+REM Build the executable using the spec file
+echo Building with platform-specific configuration...
+pyinstaller SpeedReader.spec --clean
 
 if errorlevel 1 (
     echo.

@@ -1,7 +1,8 @@
 #!/bin/bash
-# Build script for Linux and macOS
+# Cross-platform build script for Speed Reader
+# Detects OS and builds appropriate executable
 
-echo "Building Speed Reader executable..."
+echo "Building Speed Reader executable for $(uname -s)..."
 echo ""
 
 # Check if PyInstaller is installed
@@ -10,31 +11,19 @@ if ! python3 -c "import PyInstaller" 2>/dev/null; then
     pip3 install pyinstaller
 fi
 
-# Build the executable
-pyinstaller --name=SpeedReader \
-    --onefile \
-    --windowed \
-    --hidden-import=PyQt6.QtCore \
-    --hidden-import=PyQt6.QtGui \
-    --hidden-import=PyQt6.QtWidgets \
-    --hidden-import=ebooklib \
-    --hidden-import=docx \
-    --hidden-import=PyPDF2 \
-    --hidden-import=bs4 \
-    --hidden-import=lxml \
-    --hidden-import=pyttsx3 \
-    --hidden-import=pyttsx3.drivers \
-    --hidden-import=nltk \
-    --hidden-import=nltk.tag \
-    --hidden-import=nltk.tag.perceptron \
-    --collect-all=PyQt6 \
-    --add-data="src:src" \
-    src/speed_reader/main.py
+# Build using the spec file (platform-aware)
+echo "Building with platform-specific configuration..."
+pyinstaller SpeedReader.spec --clean
 
 if [ $? -eq 0 ]; then
     echo ""
-    echo "Build successful!"
-    echo "Executable created at: dist/SpeedReader"
+    if [ "$(uname -s)" = "Darwin" ]; then
+        echo "Build successful!"
+        echo "App bundle created at: dist/SpeedReader.app"
+    else
+        echo "Build successful!"
+        echo "Executable created at: dist/SpeedReader"
+    fi
 else
     echo ""
     echo "Build failed!"

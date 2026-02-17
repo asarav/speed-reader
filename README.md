@@ -41,21 +41,11 @@ A cross-platform speed reading application that displays one word at a time. Sup
   Your browser does not support the video tag.
 </video>
 
-
-https://github.com/user-attachments/assets/d64ab0ff-d355-409e-b4d0-9c597af223df
-
-
-
 ### Fullscreen Reading Mode
 <video width="800" controls>
   <source src="Fullscreen Recording.mp4" type="video/mp4">
   Your browser does not support the video tag.
 </video>
-
-
-https://github.com/user-attachments/assets/18ddb652-9aa6-4fd3-9a95-e8127e815e61
-
-
 
 ## Requirements
 
@@ -91,10 +81,25 @@ python -m src.speed_reader.main
 
 ### Building an Executable
 
-To create a standalone executable that can run without Python installed:
+**For Automated Cross-Platform Builds (Recommended):**
 
-**Option 1 - Complete Build (Recommended):**
-Run all tests, build executable, and create Python packages in one command:
+Speed Reader includes GitHub Actions CI/CD that automatically builds executables for Windows, macOS, and Linux.
+
+1. Create a version tag:
+   ```bash
+   git tag v0.0.3
+   git push origin v0.0.3
+   ```
+
+2. The build starts automatically and creates a GitHub Release with all platform binaries
+
+3. Download executables from the GitHub Release page
+
+For detailed build instructions, see [BUILD.md](BUILD.md).
+
+**For Local Development Builds:**
+
+To build locally on your current platform:
 
 **Windows:**
 ```bash
@@ -107,25 +112,14 @@ chmod +x scripts/build_all.sh
 ./scripts/build_all.sh
 ```
 
-**Option 2 - Individual Components:**
-Build only the executable:
-
-**Windows:**
-```bash
-scripts\build.bat
-```
-
-**Linux/macOS:**
-```bash
-chmod +x scripts/build.sh
-./scripts/build.sh
-```
-
 The executable will be created in the `dist/` folder:
 - Windows: `dist/SpeedReader.exe`
-- Linux/macOS: `dist/SpeedReader`
+- macOS: `dist/SpeedReader.app`
+- Linux: `dist/SpeedReader`
 
-You can distribute this executable to other computers without requiring Python installation.
+You can distribute these executables to other computers without requiring Python installation.
+
+For complete build documentation, platform-specific instructions, and troubleshooting, see [BUILD.md](BUILD.md).
 
 ### Loading a File
 
@@ -168,7 +162,8 @@ You can distribute this executable to other computers without requiring Python i
 speed-reader/
 ├── .github/
 │   ├── workflows/
-│   │   └── ci.yml              # GitHub Actions CI/CD pipeline
+│   │   ├── ci.yml              # GitHub Actions CI/CD pipeline
+│   │   └── release.yml         # Automated cross-platform release builds
 │   └── dependabot.yml          # Automated dependency updates
 ├── src/
 │   └── speed_reader/
@@ -211,6 +206,7 @@ speed-reader/
 ├── codecov.yml                  # Code coverage configuration
 ├── .gitignore                   # Git ignore rules
 ├── LICENSE                      # License file
+├── BUILD.md                     # Build instructions for all platforms
 └── README.md                    # This file
 ```
 
@@ -256,52 +252,36 @@ The tests use Python's built-in unittest framework and cover:
 - File parsing functionality
 - Recent files tracking
 
-### Continuous Integration
+### Continuous Integration and Release
 
-This project uses GitHub Actions for continuous integration. The CI pipeline:
+This project uses GitHub Actions for automated testing and cross-platform builds:
 
-- **Tests** on multiple Python versions (3.8-3.11) and operating systems (Ubuntu, Windows, macOS)
-- **Code Quality** checks with flake8, black, isort, and mypy
-- **Build Verification** to ensure executables can be created on all platforms
-- **Coverage Reporting** with codecov integration
+**CI Pipeline** (`ci.yml`):
+- Tests on multiple Python versions (3.8-3.11) and operating systems (Ubuntu, Windows, macOS)
+- Code Quality checks with flake8, black, isort, and mypy
+- Build Verification to ensure executables can be created on all platforms
+- Coverage Reporting with codecov integration
+
+**Release Pipeline** (`release.yml`):
+- Automatically triggered by version tags (e.g., `git tag v0.0.3`)
+- Builds standalone executables for Windows, macOS, and Linux in parallel
+- Creates GitHub Release with all artifacts attached
+- Supports manual trigger from GitHub Actions UI
+
+For more details on releases and building, see [BUILD.md](BUILD.md).
 
 All tests must pass before changes can be merged.
 
 ### Building for Distribution
 
-The project uses PyInstaller to create standalone executables and setuptools for Python packages:
+For detailed build instructions, platform-specific setup, CI/CD pipeline information, and troubleshooting, see [BUILD.md](BUILD.md).
 
-**Complete Build (Recommended):**
-Run tests, build executable, and create Python packages:
+**Quick Reference:**
 
-**Windows:**
-```bash
-scripts\build_all.bat
-```
+- **Automated builds (recommended)**: Push a version tag to GitHub, CI/CD builds all platforms automatically
+- **Local builds**: Run `scripts\build_all.bat` (Windows) or `./scripts/build_all.sh` (macOS/Linux)
 
-**Linux/macOS:**
-```bash
-chmod +x scripts/build_all.sh
-./scripts/build_all.sh
-```
-
-**Individual Components:**
-Build only specific components:
-
-**Windows:**
-```bash
-scripts\build.bat          # Build executable only
-python setup.py sdist bdist_wheel  # Build Python packages only
-python -m unittest tests.test_basic -v  # Run tests only
-```
-
-**Linux/macOS:**
-```bash
-chmod +x scripts/build.sh
-./scripts/build.sh         # Build executable only
-python3 setup.py sdist bdist_wheel  # Build Python packages only
-python3 -m unittest tests.test_basic -v  # Run tests only
-```
+See [BUILD.md](BUILD.md) for complete documentation.
 
 ### Code Style
 

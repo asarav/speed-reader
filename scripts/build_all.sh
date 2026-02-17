@@ -1,11 +1,15 @@
 #!/bin/bash
+# Cross-platform build and release script
+# Detects current OS and builds appropriate executables
 
+OSTYPE=$(uname -s)
 echo "========================================"
-echo "Speed Reader - Complete Build Script"
+echo "Speed Reader - Cross-Platform Build"
+echo "OS Detected: $OSTYPE"
 echo "========================================"
 echo
 
-echo "[1/4] Running tests..."
+echo "[1/5] Running tests..."
 echo
 python3 -m unittest tests.test_basic -v
 if [ $? -ne 0 ]; then
@@ -17,30 +21,54 @@ echo
 echo "Tests passed! Continuing with build..."
 echo
 
-echo "[2/4] Building executable..."
+echo "[2/5] Checking dependencies..."
 echo
-
-# Check if PyInstaller is installed
 python3 -c "import PyInstaller" 2>/dev/null
 if [ $? -ne 0 ]; then
     echo "PyInstaller not found. Installing..."
     pip3 install pyinstaller
 fi
+echo "Dependencies OK"
+echo
 
-# Build the executable
-pyinstaller --name=SpeedReader --onefile --windowed --hidden-import=PyQt6.QtCore --hidden-import=PyQt6.QtGui --hidden-import=PyQt6.QtWidgets --hidden-import=ebooklib --hidden-import=docx --hidden-import=PyPDF2 --hidden-import=bs4 --hidden-import=lxml --hidden-import=pyttsx3 --hidden-import=pyttsx3.drivers --hidden-import=nltk --hidden-import=nltk.tag --hidden-import=nltk.tag.perceptron --collect-all=PyQt6 --add-data="src:src" src/speed_reader/main.py
+echo "[3/5] Building platform-specific executable..."
+echo
 
-if [ $? -ne 0 ]; then
-    echo
-    echo "Executable build failed!"
-    exit 1
+if [ "$OSTYPE" = "darwin" ]; then
+    echo "Building macOS app bundle..."
+    pyinstaller SpeedReader.spec --clean
+    if [ $? -ne 0 ]; then
+        echo "macOS app bundle build failed!"
+        exit 1
+    fi
+    EXEC_FILE="dist/SpeedReader.app"
+    EXEC_DESC="macOS App Bundle"
+elif [ "$OSTYPE" = "linux-gnu" ]; then
+    echo "Building Linux executable..."
+    pyinstaller SpeedReader.spec --clean
+    if [ $? -ne 0 ]; then
+        echo "Linux executable build failed!"
+        exit 1
+    fi
+    chmod +x dist/SpeedReader
+    EXEC_FILE="dist/SpeedReader"
+    EXEC_DESC="Linux Executable"
+else
+    echo "Building executable for $OSTYPE..."
+    pyinstaller SpeedReader.spec --clean
+    if [ $? -ne 0 ]; then
+        echo "Executable build failed!"
+        exit 1
+    fi
+    EXEC_FILE="dist/SpeedReader"
+    EXEC_DESC="Executable"
 fi
 
 echo
 echo "Executable built successfully!"
 echo
 
-echo "[3/4] Building Python packages..."
+echo "[4/5] Building Python packages..."
 echo
 python3 setup.py sdist bdist_wheel
 
@@ -54,27 +82,31 @@ echo
 echo "Python packages built successfully!"
 echo
 
-echo "[4/4] Verifying build output..."
+echo "[5/5] Verifying build output..."
 echo
 
-if [ -f "dist/SpeedReader" ]; then
-    echo "Executable: $(ls -lh dist/SpeedReader | awk '{print $9 " (" $5 ")"}')"
+if [ -e "$EXEC_FILE" ]; then
+    if [ -d "$EXEC_FILE" ]; then
+        echo "✓ $EXEC_DESC: $(du -sh "$EXEC_FILE" | awk '{print $1}')"
+    else
+        echo "✓ $EXEC_DESC: $(ls -lh "$EXEC_FILE" | awk '{print $5}')"
+    fi
 else
-    echo "ERROR: Executable not found!"
+    echo "✗ ERROR: Executable not found!"
     exit 1
 fi
 
 if ls dist/speed_reader-*.whl 1> /dev/null 2>&1; then
-    echo "Wheel: $(ls -lh dist/speed_reader-*.whl | awk '{print $9 " (" $5 ")"}')"
+    echo "✓ Wheel: $(ls dist/speed_reader-*.whl | awk '{print $NF}' | xargs ls -lh | awk '{print $5}')"
 else
-    echo "ERROR: Wheel package not found!"
+    echo "✗ ERROR: Wheel package not found!"
     exit 1
 fi
 
 if ls dist/speed-reader-*.tar.gz 1> /dev/null 2>&1; then
-    echo "Source: $(ls -lh dist/speed-reader-*.tar.gz | awk '{print $9 " (" $5 ")"}')"
+    echo "✓ Source: $(ls dist/speed-reader-*.tar.gz | awk '{print $NF}' | xargs ls -lh | awk '{print $5}')"
 else
-    echo "ERROR: Source package not found!"
+    echo "✗ ERROR: Source package not found!"
     exit 1
 fi
 
@@ -84,7 +116,12 @@ echo "Build completed successfully!"
 echo "========================================"
 echo
 echo "Generated files in dist/:"
-ls -la dist/
+ls -lh dist/ | grep -E '(SpeedReader|speed_reader|speed-reader)'
+echo
+echo "Build Summary:"
+echo "  Platform: $OSTYPE"
+echo "  Executable: $([ -e "$EXEC_FILE" ] && echo 'Ready' || echo 'Missing')"
+echo "  Python Packages: Wheel + Source"
 echo
 echo "Ready for release! 🚀"
 echo
