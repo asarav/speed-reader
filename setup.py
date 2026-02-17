@@ -1,11 +1,31 @@
 """Setup script for Speed Reader."""
 from setuptools import setup, find_packages
+import os
 
+# Read README
 with open("README.md", "r", encoding="utf-8") as fh:
     long_description = fh.read()
 
-with open("requirements.txt", "r", encoding="utf-8") as fh:
-    requirements = [line.strip() for line in fh if line.strip() and not line.startswith("#")]
+# Read requirements with fallback for isolated build environments
+requirements = [
+    "PyQt6>=6.6.0",
+    "PyPDF2>=3.0.0",
+    "ebooklib>=0.18",
+    "python-docx>=1.1.0",
+    "beautifulsoup4>=4.12.0",
+    "lxml>=4.9.0",
+    "pyttsx3>=2.90",
+    "nltk>=3.8.0",
+    "sumy>=0.11.0",
+]
+
+# Try to read from requirements.txt if it exists (for development builds)
+if os.path.exists("requirements.txt"):
+    try:
+        with open("requirements.txt", "r", encoding="utf-8") as fh:
+            requirements = [line.strip() for line in fh if line.strip() and not line.startswith("#")]
+    except (IOError, OSError):
+        pass  # Use the fallback list if reading fails
 
 setup(
     name="speed-reader",
