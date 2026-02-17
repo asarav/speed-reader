@@ -46,7 +46,8 @@ jobs:
 
       - name: Build executable
         run: |
-          python -m PyInstaller --clean SpeedReader.spec
+          cd ${{ github.workspace }}
+          python -m PyInstaller --clean "${{ github.workspace }}/SpeedReader.spec"
 
       - name: Build Python packages
         run: |
@@ -77,7 +78,8 @@ jobs:
 
       - name: Build app bundle
         run: |
-          python -m PyInstaller --clean SpeedReader.spec
+          cd ${{ github.workspace }}
+          python -m PyInstaller --clean "${{ github.workspace }}/SpeedReader.spec"
 
       - name: Create DMG (optional)
         run: |
@@ -119,7 +121,8 @@ jobs:
 
       - name: Build executable
         run: |
-          python -m PyInstaller --clean SpeedReader.spec
+          cd ${{ github.workspace }}
+          python -m PyInstaller --clean "${{ github.workspace }}/SpeedReader.spec"
           chmod +x dist/SpeedReader
 
       - name: Upload Linux artifacts
@@ -147,6 +150,7 @@ jobs:
 
       - name: Build packages
         run: |
+          cd ${{ github.workspace }}
           python -m build
 
       - name: Upload package artifacts
