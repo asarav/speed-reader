@@ -54,7 +54,7 @@ jobs:
           python setup.py sdist bdist_wheel
 
       - name: Upload Windows artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: windows-builds
           path: dist/SpeedReader.exe
@@ -90,7 +90,7 @@ jobs:
           rm -rf dmg-temp
 
       - name: Upload macOS artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: macos-builds
           path: |
@@ -126,7 +126,7 @@ jobs:
           chmod +x dist/SpeedReader
 
       - name: Upload Linux artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: linux-builds
           path: dist/SpeedReader
@@ -154,7 +154,7 @@ jobs:
           python -m build
 
       - name: Upload package artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: python-packages
           path: dist/speed_reader-*
